@@ -39,12 +39,16 @@ int main()
 	unsigned int program = glCreateProgram();
 	unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
 	unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+	//glShaderSource();
 	glCompileShader(vertexShader);
 	glCompileShader(fragmentShader);
 	glAttachShader(program, vertexShader);
 	glAttachShader(program, fragmentShader);
 	glLinkProgram(program);
-	
+
+	bool showDemo = true;
+	bool want_exit = false;
+
 	while (!glfwWindowShouldClose(window))
 	{
 		glfwPollEvents();
@@ -54,7 +58,47 @@ int main()
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
-		ImGui::ShowDemoWindow(0);
+		//ImGui::ShowDemoWindow(&showDemo);
+
+		ImGui::Begin("Status");
+		ImGui::Text("Want Exit? %s", want_exit ? "Yes" : "No");
+		ImGui::End();
+
+	
+		if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+		{
+			want_exit = true;
+		}
+
+		if (want_exit)
+		{
+			ImGui::OpenPopup("Exit?");
+			// Always center this window when appearing
+			ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
+			ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+			if (ImGui::BeginPopupModal("Exit?", NULL, ImGuiWindowFlags_AlwaysAutoResize))
+			{
+				ImGui::Text("Are You Sure Want to Exit?");
+				ImGui::Separator();
+
+				//static int unused_i = 0;
+				//ImGui::Combo("Combo", &unused_i, "Delete\0Delete harder\0");
+		
+				if (ImGui::Button("OK", ImVec2(120, 0))) { ImGui::CloseCurrentPopup(); want_exit = false; glfwSetWindowShouldClose(window, 1); }
+				ImGui::SetItemDefaultFocus();
+				ImGui::SameLine();
+				if (ImGui::Button("Cancel", ImVec2(120, 0))) { ImGui::CloseCurrentPopup(); want_exit = false; }
+				ImGui::EndPopup();
+			}
+		}
+
+		
+
+
+		if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+		{
+
+		}
 
 		glBegin(GL_QUADS);
 		glVertex2f(-1, 1);
