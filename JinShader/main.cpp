@@ -1,107 +1,38 @@
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
-#include <iostream>
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_opengl3.h"
-
-#define WINDOW_WIDTH 1920
-#define WINDOW_HEIGHT 1080
-
-static bool want_exit = false;
-static bool want_save = false;
-static bool want_update = false;
-static bool compile_success = false;
-static bool has_focus = true;
-
-
-void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
-{
-	if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-	{
-		want_exit = true;
-	}
-
-	if (key == GLFW_KEY_S && mods == GLFW_MOD_CONTROL && action == GLFW_PRESS)
-	{
-		want_update = true;
-		want_save = true;
-	}
-}
-
-void focus_callback(GLFWwindow* window, int focus)
-{
-	has_focus = (bool)focus;
-}
+#include "JinShader.h"
 
 int main()
 {
-	if (!glfwInit())
-	{
-		printf("Failed to Init GLFW! Cannot Continue!\n");
-		return -1;
-	}
 
-	//glfwWindowHint(GLFW_MAXIMIZED, 1);
-	GLFWwindow* window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "JinShader", 0, 0);
-	glfwMakeContextCurrent(window);
-	glfwSwapInterval(1);
-	glfwSetKeyCallback(window, key_callback);
-	glfwSetWindowFocusCallback(window, focus_callback);
-	glewExperimental = true;
-	if (glewInit() != GLEW_OK)
-	{
-		printf("Failed to Init GLEW! Cannot Continue!\n");
-		glfwDestroyWindow(window);
-		glfwTerminate();
-		return -2;
-	}
+	JinShaderState* state = InitJinShader();
+	state->window_width = 1200;
+	state->window_height = 675;
 
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;           // Enable Docking
-	ImGui::StyleColorsDark();
-	ImGui_ImplGlfw_InitForOpenGL(window, true);
-	const char* glsl_version = "#version 150";
-	ImGui_ImplOpenGL3_Init(glsl_version);
+	InitWindow(state);
+	InitImGui(state);
 	
 	unsigned int program = 0, shader = 0;
 	int codeBufferSize = 1024 * 1024 * 4;
 	char* codeBuffer = (char*)calloc(1, codeBufferSize);
 
-	//const char* vertexShaderSource = 
-	//	"#version 460\n"
-	//	"layout(location = 0) in vec2 in_position;\n"
-	//	//"out vec2 fragCoord;\n"
-	//	"void main()\n"
-	//	"{\n"
-	//		"gl_Position = vec4(in_position.x, in_position.y, 0.0, 1.0);\n"
-	//	"}\n";
-
 	unsigned int fbo;
+	unsigned int colorAttachMent = 0;
 	glGenFramebuffers(1, &fbo);
-	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-	
-	unsigned int colorAttachMent;
-	glGenTextures(1, &colorAttachMent);
-	glBindTexture(GL_TEXTURE_2D, colorAttachMent);	
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, WINDOW_WIDTH, WINDOW_HEIGHT, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorAttachMent, 0);
+	const char* vertexShaderSource = 
+		"#version 460\n"
+		"layout(location = 0) in vec2 in_position;\n"
+		//"out vec2 fragCoord;\n"
+		"void main()\n"
+		"{\n"
+			"gl_Position = vec4(in_position.x, in_position.y, 0.0, 1.0);\n"
+		"}\n";
 
-	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-		std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << std::endl;
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-	/*auto vertexShader = glCreateShader(GL_VERTEX_SHADER);
+	auto vertexShader = glCreateShader(GL_VERTEX_SHADER);
 	glShaderSource(vertexShader, 1, &vertexShaderSource, 0);
 	glCompileShader(vertexShader);
 	int result = 0;
 	glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &result);
-	compile_success = (bool)result;
+
 	if (!result)
 	{
 		int len = 0;
@@ -110,8 +41,7 @@ int main()
 		glGetShaderInfoLog(vertexShader, len, 0, log);
 		printf("Shader Compilation Failed! : %s\n", log);
 		free(log);
-	}*/
-
+	}
 
 	const char* commonShaderSource =
 		"#version 450\n"
@@ -151,12 +81,28 @@ int main()
 
 	float framebufferSizeX = 0;
 	float framebufferSizeY = 0;
+	float framebufferSizeXLast = 0;
+	float framebufferSizeYLast = 0;
 
-
-	while (!glfwWindowShouldClose(window))
+	float quadVerts[4*4] = 
 	{
-		glfwPollEvents();
-		if (has_focus)
+		-1,  1,  0, 1,
+		-1, -1,  0, 1,
+		 1, -1,  0, 1,
+		 1,  1,  0, 1
+	};
+	unsigned int vbo;
+	glGenBuffers(1, &vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 4 * 4, quadVerts, GL_STATIC_DRAW);
+	glVertexAttribPointer(0, 4, GL_FLOAT, 0, 0, 0);
+	glEnableVertexAttribArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	while (state->window_is_open)
+	{
+		JinShaderUpdate(state);
+		//if (state->has_focus)
 		{
 			iFrame++;
 			iTime = (float)glfwGetTime();
@@ -168,19 +114,30 @@ int main()
 
 			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
 			ImGui::DockSpaceOverViewport();
-			ImGui::Begin("Code", 0, ImGuiWindowFlags_NoResize);
+			ImGui::Begin("Code", 0);
 			auto avail = ImGui::GetContentRegionAvail();
 			ImGui::InputTextMultiline("##GLSL", codeBuffer, codeBufferSize, avail);
 			ImGui::End();
-			ImGui::Begin("View", 0, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoScrollbar);
-			avail = ImGui::GetContentRegionMax();
+			ImGui::Begin("View", 0);
+			avail = ImGui::GetContentRegionAvail();
 			ImGui::Image(reinterpret_cast<void*>(colorAttachMent), avail, { 0,1 }, {1,0});
 			framebufferSizeX = avail.x;
 			framebufferSizeY = avail.y;
+
+			if (framebufferSizeXLast != framebufferSizeX || framebufferSizeYLast != framebufferSizeY)
+			{
+				state->want_update = true;
+			}
+
+			framebufferSizeXLast = framebufferSizeX;
+			framebufferSizeYLast = framebufferSizeY;
+			state->fb_width = (int)framebufferSizeX;
+			state->fb_height = (int)framebufferSizeY;
+
 			ImGui::End();
 			ImGui::PopStyleVar();
 
-			if (want_exit)
+			if (state->want_exit)
 			{
 				ImGui::OpenPopup("Exit?");
 				// Always center this window when appearing
@@ -191,16 +148,27 @@ int main()
 					ImGui::Text("Are You Sure Want to Exit?");
 					ImGui::Separator();
 		
-					if (ImGui::Button("OK", ImVec2(120, 0))) { ImGui::CloseCurrentPopup(); want_exit = false; glfwSetWindowShouldClose(window, 1); }
+					if (ImGui::Button("OK", ImVec2(120, 0)))
+					{
+						ImGui::CloseCurrentPopup();
+						state->want_exit = false;
+						glfwSetWindowShouldClose(state->window, 1);
+						state->window_is_open = false;
+					}
+
 					ImGui::SetItemDefaultFocus();
 					ImGui::SameLine();
-					if (ImGui::Button("Cancel", ImVec2(120, 0))) { ImGui::CloseCurrentPopup(); want_exit = false; }
+					if (ImGui::Button("Cancel", ImVec2(120, 0)))
+					{ 
+						ImGui::CloseCurrentPopup();
+						state->want_exit = false;
+					}
 					ImGui::EndPopup();
 				}
 			}
 
 
-			if (want_save)
+			if (state->want_save)
 			{
 				auto sourceLen = strlen(codeBuffer);
 				char* shaderSource = (char*)calloc(1, sourceLen + commonShaderSourceLen);
@@ -219,7 +187,7 @@ int main()
 				glCompileShader(shader);
 				int result = 0;
 				glGetShaderiv(shader, GL_COMPILE_STATUS, &result);
-				compile_success = (bool)result;
+				state->compile_success = (bool)result;
 				if (!result)
 				{
 					int len = 0;
@@ -229,7 +197,7 @@ int main()
 					printf("Shader Compilation Failed! : %s\n", log);
 					free(log);
 				}
-				//glAttachShader(program, vertexShader);
+				glAttachShader(program, vertexShader);
 				glAttachShader(program, shader);
 				glLinkProgram(program);
 				glGetProgramiv(program, GL_LINK_STATUS, &result);
@@ -256,49 +224,64 @@ int main()
 					//iDateLocation = glGetUniformLocation(program, "iDate");;
 					//iSampleRateLocation = glGetUniformLocation(program, "iSampleRate");
 				}
-				want_save = false;
+				state->want_save = false;
 			}
-
-			if (want_update)
-			{
-				want_update = false;
-			}
-
 
 			glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+			static int updateCount = 0;
+			if (state->want_update)
+			{
+				updateCount++;
+				glDeleteTextures(1, &colorAttachMent);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, 0, 0);
+				glGenTextures(1, &colorAttachMent);
+				glBindTexture(GL_TEXTURE_2D, colorAttachMent);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, state->fb_width, state->fb_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorAttachMent, 0);
+				state->want_update = false;
+			}
 
 			glUniform1f(iTimeLocation, iTime);
-			int x_size = 0, y_size = 0;
-			glfwGetFramebufferSize(window, &x_size, &y_size);
-			glUniform3f(iResolutionLocation, (float)x_size, (float)y_size, 0.0f);
+			glUniform3f(iResolutionLocation, state->fb_width, state->fb_height, 0.0f);
 			glUniform1f(iTimeDeltaLocation, iTimeDelta);
 			glUniform1i(iFrameLocation, iFrame);
 			double mouse_x = 0, mouse_y = 0;
 			float left_click = 0, right_click = 0;
-			left_click = (float)glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
-			right_click = (float)glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT);
-			glfwGetCursorPos(window, &mouse_x, &mouse_y);
+			left_click = (float)glfwGetMouseButton(state->window, GLFW_MOUSE_BUTTON_LEFT);
+			right_click = (float)glfwGetMouseButton(state->window, GLFW_MOUSE_BUTTON_RIGHT);
+			glfwGetCursorPos(state->window, &mouse_x, &mouse_y);
 			glUniform4f(iMouseLocation, (float)mouse_x, (float)mouse_y, left_click, right_click);
 			glUseProgram(program);
-			glBegin(GL_QUADS);
-			glVertex2f(-1, 1);
-			glVertex2f(-1, -1);
-			glVertex2f( 1, -1);
-			glVertex2f(1, 1);
-			glEnd();
+			glBindBuffer(GL_ARRAY_BUFFER, vbo);
+			glViewport(0, 0, state->fb_width, state->fb_height);
+			glDrawArrays(GL_QUADS, 0, 4);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+#ifdef _DEBUG
+			ImGui::Begin("State");
+			ImGui::Text("Region Avail %f, %f", avail.x, avail.y);
+			ImGui::Text("Texture Size %d, %d", state->fb_width, state->fb_height);
+
+			ImGui::Text("Update Count %d", updateCount);
+			ImGui::End();
+#endif // _DEBUG
 
 			ImGui::Render();
 			ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-			glfwSwapBuffers(window);
+			glfwSwapBuffers(state->window);
 
 		}
 	}
 
+
+
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
-	glfwDestroyWindow(window);
+	glfwDestroyWindow(state->window);
 	glfwTerminate();
 
 	return 0;
