@@ -1,4 +1,5 @@
 #include "JinShader.h"
+#include "texteditor/TextEditor.h"
 
 
 //this is borrowed from the imgui_demo.cpp
@@ -145,7 +146,7 @@ int main()
 	glGenFramebuffers(1, &fbo);
 
 	const char* vertexShaderSource = 
-		"#version 450\n"
+		"#version 330 core\n"
 		"layout(location = 0) in vec4 in_position;\n"
 		"void main()\n"
 		"{\n"
@@ -164,12 +165,12 @@ int main()
 		glGetShaderiv(vertexShader, GL_INFO_LOG_LENGTH, &len);
 		char* log = (char*)malloc(len);
 		glGetShaderInfoLog(vertexShader, len, 0, log);
-		printf("Shader Compilation Failed! : %s\n", log);
+		printf("Vertex Shader Compilation Failed! : %s\n", log);
 		free(log);
 	}
 
 	const char* commonShaderSource =
-		"#version 450\n"
+		"#version 330 core\n"
 		"out vec4 FinalColor;\n"
 		"in vec4 fragCoord;\n"
 		"uniform vec3 iResolution;\n"           // viewport resolution (in pixels)
@@ -182,9 +183,10 @@ int main()
 		//"uniform vec4 iDate;\n"                 // (year, month, day, time in seconds)
 		//"uniform float iSampleRate;\n";           // sound sample rate (i.e., 44100)
 		"void mainImage( out vec4 fragColor, in vec2 fragCoord );\n"
-		"void main() {\n"
-		"mainImage(FinalColor, gl_FragCoord.xy);"
-		"};\n";
+		"void main()\n"
+		"{\n"
+		"\tmainImage(FinalColor, gl_FragCoord.xy);\n"
+		"}\n";
 
 	auto commonShaderSourceLen = strlen(commonShaderSource);
 
@@ -228,6 +230,13 @@ int main()
 	bool showAboutJinShader = false;
 	bool showCode = true;
 	bool showLog = true;
+
+	TextEditor editor;
+	editor.SetLanguageDefinition(TextEditor::LanguageDefinition::GLSL());
+	editor.SetText(codeBuffer);
+	editor.SetShowWhitespaces(false);
+	editor.SetImGuiChildIgnored(false);
+	TextEditor::ErrorMarkers errorMarkers;
 
 	while (state->window_is_open)
 	{
@@ -277,18 +286,30 @@ int main()
 
 			//ImGui::ShowDemoWindow();
 
-			if(showAboutImGui)
+			if (showAboutImGui)
+			{
+				ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.2f);
+				ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 				ImGui::ShowAboutWindow(&showAboutImGui);
+			}
 			if (showAboutJinShader)
 			{
-				if (ImGui::Begin("About JinShader", &showAboutJinShader, ImGuiWindowFlags_AlwaysAutoResize))
+				ImGui::OpenPopup("About JinShader");
+				ImVec2 center(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f);
+				ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+				if (ImGui::BeginPopupModal("About JinShader", &showAboutJinShader, ImGuiWindowFlags_AlwaysAutoResize))
 				{
 					ImGui::Text("Version 0.4 pre-release");
 					ImGui::Separator();
 					ImGui::Text("Author: Ahsan Ullah Sarbaz");
-					ImGui::End();
+					ImGui::EndPopup();
 				}
+			}
 
+			if (showCode)
+			{
+				editor.SetErrorMarkers(errorMarkers);
+				editor.Render("Code", &showCode);
 			}
 
 			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{ 0, 0 });
@@ -297,13 +318,7 @@ int main()
 			{
 				consoleLogger.Draw("Log", &showLog);
 			}
-			if (showCode)
-			{
-				ImGui::Begin("Code", &showCode);
-				auto avail = ImGui::GetContentRegionAvail();
-				ImGui::InputTextMultiline("##GLSL", codeBuffer, codeBufferSize, avail);
-				ImGui::End();
-			}
+			
 
 			ImGui::Begin("View", 0);
 			auto avail = ImGui::GetContentRegionAvail();
@@ -356,11 +371,14 @@ int main()
 
 			if (state->want_save)
 			{
-				auto sourceLen = strlen(codeBuffer);
+				auto sourceLen = editor.GetText().size();
 				char* shaderSource = (char*)calloc(1, sourceLen + commonShaderSourceLen);
+				
+				std::string editorString = editor.GetText();
+				const char* editorCode = editorString.c_str();
 				//strcpy(shaderSource, commonShaderSource);
 				strcat(shaderSource, commonShaderSource);
-				strcat(shaderSource, codeBuffer);
+				strcat(shaderSource, editorCode);
 
 				if(shader)
 					glDeleteShader(shader);
@@ -380,8 +398,31 @@ int main()
 					glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &len);
 					char* log = (char*)malloc(len);
 					glGetShaderInfoLog(shader, len, 0, log);
-					consoleLogger.AddLog("Shader Compilation Failed %s", log);
-					printf("Shader Compilation Failed! : %s\n", log);
+					std::vector<std::string> errorStrings;
+					char* token = strtok(log, "\n");
+					while (token != NULL)
+					{
+						if(std::regex_search(std::string(token), std::regex(R"(ERROR: \d+:\d+:)")))
+							errorStrings.emplace_back(std::string(token));
+						token = strtok(NULL, "\n");
+					}
+					for (auto& error : errorStrings)
+					{
+						std::string expression = R"((?::[0-9]+:))";
+						auto regexp = std::regex(expression);
+						std::smatch match;
+						std::regex_search(error, match, regexp);
+						regexp = std::regex(R"(\d+)");
+						auto line = match[0].str();
+						std::smatch match2;
+						std::regex_search(line, match2, regexp);
+						line = match2[0].str();
+						int num = std::stoi(line) - 13;
+						auto newError = std::regex_replace(error, std::regex(expression), (":" + std::to_string(num) + ":"));
+						errorMarkers.insert(std::make_pair<int, std::string>(int(num), std::string(newError)));
+						consoleLogger.AddLog("Shader Compilation Failed %s", newError.c_str());
+					}
+
 					free(log);
 				}
 				glAttachShader(program, vertexShader);
@@ -400,6 +441,7 @@ int main()
 				}
 				else
 				{
+					errorMarkers.clear();
 					printf("Compile Success!\n");
 
 					iTimeLocation = glGetUniformLocation(program, "iTime");

@@ -42,6 +42,9 @@
     <ClCompile Include="JinShader.cpp">
       <Filter>Header Files</Filter>
     </ClCompile>
+    <ClCompile Include="texteditor\TextEditor.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="imgui\imconfig.h">
@@ -69,6 +72,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="JinShader.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="texteditor\TextEditor.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
