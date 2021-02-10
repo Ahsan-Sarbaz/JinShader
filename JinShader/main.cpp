@@ -402,13 +402,13 @@ int main()
 					char* token = strtok(log, "\n");
 					while (token != NULL)
 					{
-						if(std::regex_search(std::string(token), std::regex(R"(ERROR: \d+:\d+:)")))
+						if(std::regex_search(std::string(token), std::regex(R"(((ERROR: \d:\d*:) | (\s*:\s*error)))")))
 							errorStrings.emplace_back(std::string(token));
 						token = strtok(NULL, "\n");
 					}
 					for (auto& error : errorStrings)
 					{
-						std::string expression = R"((?::[0-9]+:))";
+						std::string expression = R"((?::|\()\d*(?::|\)))";
 						auto regexp = std::regex(expression);
 						std::smatch match;
 						std::regex_search(error, match, regexp);
